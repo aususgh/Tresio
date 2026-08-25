@@ -1,6 +1,6 @@
-// 1. Tus datos de Firebase
+
 const firebaseConfig = {
-  apiKey: "AIzaSy...", // (deja las credenciales que te dio Firebase)
+  apiKey: "AIzaSy...",
   authDomain: "lared-6db02.firebaseapp.com",
   projectId: "lared-6db02",
   storageBucket: "lared-6db02.firebasestorage.app",
@@ -8,7 +8,6 @@ const firebaseConfig = {
   appId: "1:146469241721:web:..."
 };
 
-// 2. Inicializar la app clásica
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 // =============================
