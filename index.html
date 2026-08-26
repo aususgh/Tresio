@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tresio</title></title>
+    <title>App Privada</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
     <meta name="theme-color" content="#1C1C1E">
 </head>
 <body>
@@ -16,7 +16,7 @@
     <div id="login-view" class="view active">
         <div class="login-container">
             <div class="login-header">
-                <h2>Bienvenido a Tresio</h2>
+                <h2>Bienvenido</h2>
                 <p>Inicia sesión para continuar</p>
             </div>
 
@@ -53,7 +53,7 @@
             <section id="home" class="tab-section active" data-index="0">
                 <h1 class="section-title">Inicio</h1>
                 <div class="users-grid" id="users-grid">
-                    <!-- Los usuarios se cargarán dinámicamente mediante JS y Firestore -->
+                    <!-- Los usuarios se cargarán dinámicamente desde Firestore -->
                 </div>
             </section>
 
@@ -191,7 +191,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     
-    <!-- Lógica Principal -->
-    <script src="app.js"></script>
+    <!-- Lógica Principal con parámetro para forzar actualización -->
+    <script src="app.js?v=2"></script>
 </body>
 </html>
