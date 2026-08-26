@@ -24,14 +24,16 @@ let currentTabIndex = 0;
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     
-    // REGISTRO DEL SERVICE WORKER (Para funcionamiento Offline y PWA)
+    // DESACTIVACIÓN DE SERVICE WORKERS PREVIOS (Evita problemas de memoria durante desarrollo)
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js').catch(err => {
-            console.log('Service Worker no encontrado o error en registro:', err);
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+            for (let registration of registrations) {
+                registration.unregister();
+            }
         });
     }
 
-    // GESTIÓN DEL MODO OSCURO (Automático al entrar si no hay preferencia previa)
+    // GESTIÓN DEL MODO OSCURO
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light') {
         document.body.classList.remove('dark-mode');
@@ -189,7 +191,6 @@ function initLocation() {
 function updateLocation() {
     const status = document.getElementById('map-status');
     const iframe = document.getElementById('map-iframe');
-    const timeSpan = document.getElementById('location-time');
 
     if (!navigator.geolocation) {
         status.textContent = "Tu navegador no soporta geolocalización.";
