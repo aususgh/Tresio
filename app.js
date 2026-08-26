@@ -2,8 +2,9 @@
 // 1. CONFIGURACIÓN DE FIREBASE
 // ==========================================
 const firebaseConfig = {
-  apiKey: "AIzaSy...", 
+  apiKey: "TU_API_KEY_REAL", 
   authDomain: "lared-6db02.firebaseapp.com",
+  databaseURL: "https://lared-6db02-default-rtdb.firebaseio.com", // Importante para Realtime DB
   projectId: "lared-6db02",
   storageBucket: "lared-6db02.firebasestorage.app",
   messagingSenderId: "146469241721",
@@ -12,13 +13,14 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const rtdb = firebase.database();
+const auth = firebase.auth();
 
 // ==========================================
 // ESTADO GLOBAL
 // ==========================================
 let currentUser = null;
 let currentTabIndex = 0;
-let heartbeatInterval = null;
 
 // ==========================================
 // INICIALIZACIÓN
@@ -43,11 +45,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!savedTheme) localStorage.setItem('theme', 'dark');
     }
 
-    // Verificar si hay sesión activa e iniciar latido
+    // Iniciar sesión anónima en Firebase Auth para obtener un UID persistente
+    auth.signInAnonymously().catch(err => console.error("Error al autenticar anónimamente:", err));
+
+    // Escuchar el cambio de estado de autenticación
+    auth.onAuthStateChanged(user => {
+        if (user && currentUser) {
+            setupPresence(user.uid);
+        }
+    });
+
+    // Verificar si hay sesión local activa
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
         currentUser = savedUser;
-        startHeartbeat();
+        if (auth.currentUser) {
+            setupPresence(auth.currentUser.uid);
+        }
         showApp();
     }
 
@@ -58,7 +72,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (username) {
             currentUser = username;
             localStorage.setItem('currentUser', username);
-            startHeartbeat();
+            if (auth.currentUser) {
+                setupPresence(auth.currentUser.uid);
+            }
             showApp();
         }
     });
@@ -82,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form-add-poll').addEventListener('submit', handleAddPoll);
     document.getElementById('phrase-form').addEventListener('submit', handleAddPhrase);
 
-    // Inicializar secciones
+    // Inicializar secciones y escuchar estado online
     initLocation();
     loadGames();
     loadPhrases();
@@ -90,58 +106,49 @@ document.addEventListener('DOMContentLoaded', () => {
     listenUsers();
 });
 
-// Detectar cuando el usuario oculta o minimiza la pestaña
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-        setOnlineStatus(false);
-    } else if (document.visibilityState === 'visible' && currentUser) {
-        setOnlineStatus(true);
-    }
-});
-
 // ==========================================
-// SISTEMA DE USUARIOS ONLINE (HEARTBEAT)
+// SISTEMA DE PRESENCIA REALTIME (onDisconnect)
 // ==========================================
-function startHeartbeat() {
-    setOnlineStatus(true);
-    
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-    
-    // Enviar señal de vida a Firestore cada 30 segundos
-    heartbeatInterval = setInterval(() => {
-        if (currentUser && document.visibilityState === 'visible') {
-            setOnlineStatus(true);
-        }
-    }, 30000);
-}
+function setupPresence(uid) {
+    if (!uid || !currentUser) return;
 
-async function setOnlineStatus(isOnline) {
-    if (!currentUser) return;
-    try {
-        await db.collection('users').doc(currentUser).set({
-            username: currentUser,
-            isOnline: isOnline,
-            lastActive: firebase.firestore.Timestamp.now()
-        }, { merge: true });
-    } catch (error) {
-        console.error("Error actualizando estado online:", error);
-    }
+    const userStatusRef = rtdb.ref('/status/' + uid);
+
+    const isOfflineForRTDB = {
+        state: 'offline',
+        username: currentUser,
+        last_changed: firebase.database.ServerValue.TIMESTAMP
+    };
+
+    const isOnlineForRTDB = {
+        state: 'online',
+        username: currentUser,
+        last_changed: firebase.database.ServerValue.TIMESTAMP
+    };
+
+    // Escuchar cambios en la conexión física del socket
+    rtdb.ref('.info/connected').on('value', snapshot => {
+        if (snapshot.val() === false) return;
+
+        // Establecer instrucción en el servidor: si se desconecta, marcar offline
+        userStatusRef.onDisconnect().set(isOfflineForRTDB).then(() => {
+            // Estado actual en línea
+            userStatusRef.set(isOnlineForRTDB);
+        });
+    });
 }
 
 function listenUsers() {
-    db.collection('users').onSnapshot(snapshot => {
+    rtdb.ref('/status').on('value', snapshot => {
         const grid = document.getElementById('users-grid');
         if (!grid) return;
         
         grid.innerHTML = '';
-        const ahora = new Date().getTime();
+        const statuses = snapshot.val() || {};
         
-        snapshot.forEach(doc => {
-            const user = doc.data();
-            
-            // Si la última actividad fue hace más de 60 segundos, se considera offline
-            const ultimaActividad = user.lastActive ? user.lastActive.toDate().getTime() : 0;
-            const estaOnline = user.isOnline && ((ahora - ultimaActividad) < 60000);
+        Object.keys(statuses).forEach(uid => {
+            const user = statuses[uid];
+            const estaOnline = user.state === 'online';
             
             const div = document.createElement('div');
             div.className = 'user-card';
@@ -156,7 +163,7 @@ function listenUsers() {
             grid.appendChild(div);
         });
     }, error => {
-        console.error("Error cargando usuarios: ", error);
+        console.error("Error leyendo Realtime Database:", error);
     });
 }
 
@@ -272,7 +279,7 @@ function displayMap(lat, lon, timestamp) {
 }
 
 // ==========================================
-// LÓGICA DE JUEGOS Y NOTIFICACIONES
+// LÓGICA DE JUEGOS
 // ==========================================
 function loadGames() {
     const games = JSON.parse(localStorage.getItem('appGames')) || [];
