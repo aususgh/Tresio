@@ -1,10 +1,10 @@
 const firebaseConfig = {
-  apiKey: "AIzaSy...",
+  apiKey: "AIzaSyA8R3L7URqOX6pYCWJjWDTJhXBIUR5dn9k",
   authDomain: "lared-6db02.firebaseapp.com",
   projectId: "lared-6db02",
   storageBucket: "lared-6db02.firebasestorage.app",
   messagingSenderId: "146469241721",
-  appId: "1:146469241721:web:..."
+  appId: "1:145469241721:web:aa75af74720b4e7e3617a8"
 };
 
 firebase.initializeApp(firebaseConfig);
