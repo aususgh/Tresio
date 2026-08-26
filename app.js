@@ -18,13 +18,14 @@ const db = firebase.firestore();
 // ==========================================
 let currentUser = null;
 let currentTabIndex = 0;
+let heartbeatInterval = null;
 
 // ==========================================
 // INICIALIZACIÓN
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     
-    // DESACTIVACIÓN DE SERVICE WORKERS PREVIOS (Evita problemas de memoria durante desarrollo)
+    // Desactivar Service Worker previo durante el desarrollo
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(registrations => {
             for (let registration of registrations) {
@@ -33,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // GESTIÓN DEL MODO OSCURO
+    // Gestión del Modo Oscuro
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light') {
         document.body.classList.remove('dark-mode');
@@ -42,22 +43,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!savedTheme) localStorage.setItem('theme', 'dark');
     }
 
-    // Verificar si hay sesión activa
+    // Verificar si hay sesión activa e iniciar latido
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
         currentUser = savedUser;
-        setOnlineStatus(true);
+        startHeartbeat();
         showApp();
     }
 
     // Login Form
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
+    document.getElementById('login-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const username = document.getElementById('username').value.trim();
         if (username) {
             currentUser = username;
             localStorage.setItem('currentUser', username);
-            await setOnlineStatus(true);
+            startHeartbeat();
             showApp();
         }
     });
@@ -72,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Modales y botones flotantes (FAB)
+    // Modales y botones flotantes
     document.getElementById('btn-add-game').addEventListener('click', () => document.getElementById('modal-game').classList.add('active'));
     document.getElementById('btn-add-poll').addEventListener('click', () => document.getElementById('modal-poll').classList.add('active'));
     
@@ -81,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form-add-poll').addEventListener('submit', handleAddPoll);
     document.getElementById('phrase-form').addEventListener('submit', handleAddPhrase);
 
-    // Inicializar funciones y cargar datos
+    // Inicializar secciones
     initLocation();
     loadGames();
     loadPhrases();
@@ -89,25 +90,43 @@ document.addEventListener('DOMContentLoaded', () => {
     listenUsers();
 });
 
+// Detectar cuando el usuario oculta o minimiza la pestaña
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        setOnlineStatus(false);
+    } else if (document.visibilityState === 'visible' && currentUser) {
+        setOnlineStatus(true);
+    }
+});
+
 // ==========================================
-// SISTEMA DE USUARIOS ONLINE (FIREBASE)
+// SISTEMA DE USUARIOS ONLINE (HEARTBEAT)
 // ==========================================
+function startHeartbeat() {
+    setOnlineStatus(true);
+    
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    
+    // Enviar señal de vida a Firestore cada 30 segundos
+    heartbeatInterval = setInterval(() => {
+        if (currentUser && document.visibilityState === 'visible') {
+            setOnlineStatus(true);
+        }
+    }, 30000);
+}
+
 async function setOnlineStatus(isOnline) {
     if (!currentUser) return;
     try {
         await db.collection('users').doc(currentUser).set({
             username: currentUser,
             isOnline: isOnline,
-            lastActive: firebase.firestore.FieldValue.serverTimestamp()
+            lastActive: firebase.firestore.Timestamp.now()
         }, { merge: true });
     } catch (error) {
         console.error("Error actualizando estado online:", error);
     }
 }
-
-window.addEventListener('beforeunload', () => {
-    setOnlineStatus(false);
-});
 
 function listenUsers() {
     db.collection('users').onSnapshot(snapshot => {
@@ -115,20 +134,24 @@ function listenUsers() {
         if (!grid) return;
         
         grid.innerHTML = '';
+        const ahora = new Date().getTime();
         
         snapshot.forEach(doc => {
             const user = doc.data();
-            const isOnline = user.isOnline;
+            
+            // Si la última actividad fue hace más de 60 segundos, se considera offline
+            const ultimaActividad = user.lastActive ? user.lastActive.toDate().getTime() : 0;
+            const estaOnline = user.isOnline && ((ahora - ultimaActividad) < 60000);
             
             const div = document.createElement('div');
             div.className = 'user-card';
             div.innerHTML = `
                 <div class="avatar">
                     <span class="initial">${user.username ? user.username.charAt(0).toUpperCase() : 'U'}</span>
-                    <div class="status-dot ${isOnline ? 'online' : 'offline'}"></div>
+                    <div class="status-dot ${estaOnline ? 'online' : 'offline'}"></div>
                 </div>
                 <h3>${user.username || 'Usuario'}</h3>
-                <span class="status-text">${isOnline ? 'Online' : 'Offline'}</span>
+                <span class="status-text">${estaOnline ? 'Online' : 'Offline'}</span>
             `;
             grid.appendChild(div);
         });
@@ -178,7 +201,7 @@ function closeModal(modalId) {
 }
 
 // ==========================================
-// LÓGICA DE UBICACIÓN (Mapa funcional)
+// LÓGICA DE UBICACIÓN
 // ==========================================
 function initLocation() {
     const btnUpdate = document.getElementById('btn-update-location');
@@ -299,7 +322,7 @@ function handleAddGame(e) {
 }
 
 // ==========================================
-// FUNCIÓN PARA EL TIEMPO RELATIVO
+// TIEMPO RELATIVO
 // ==========================================
 function obtenerTiempoRelativo(timestamp) {
     if (!timestamp) return "";
@@ -340,7 +363,7 @@ function obtenerTiempoRelativo(timestamp) {
 }
 
 // ==========================================
-// 4. FRASES
+// FRASES
 // ==========================================
 function loadPhrases() {
     const phrases = JSON.parse(localStorage.getItem('appPhrases')) || [];
@@ -391,7 +414,7 @@ function handleAddPhrase(e) {
 }
 
 // ==========================================
-// 5. ENCUESTAS
+// ENCUESTAS
 // ==========================================
 function loadPolls() {
     const polls = JSON.parse(localStorage.getItem('appPolls')) || [];
