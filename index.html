@@ -53,7 +53,7 @@
             <section id="home" class="tab-section active" data-index="0">
                 <h1 class="section-title">Inicio</h1>
                 <div class="users-grid" id="users-grid">
-                    <!-- Los usuarios se cargarán dinámicamente desde Firestore -->
+                    <!-- Los usuarios se cargarán dinámicamente desde Realtime Database -->
                 </div>
             </section>
 
@@ -187,11 +187,13 @@
         </div>
     </div>
 
-    <!-- SDKs de Firebase -->
+    <!-- SDKs DE FIREBASE (App, Auth, Realtime Database y Firestore) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     
-    <!-- Lógica Principal con parámetro para forzar actualización -->
-    <script src="app.js?v=2"></script>
+    <!-- Lógica Principal -->
+    <script src="app.js?v=3"></script>
 </body>
 </html>
