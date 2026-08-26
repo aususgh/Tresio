@@ -2,19 +2,18 @@
 // 1. CONFIGURACIÓN DE FIREBASE
 // ==========================================
 const firebaseConfig = {
-  apiKey: "TU_API_KEY_REAL", 
+  apiKey: "AIzaSyA8R3L7URqOX6pYCWJjWDTJhXBIUR5dn9k",
   authDomain: "lared-6db02.firebaseapp.com",
-  databaseURL: "https://lared-6db02-default-rtdb.firebaseio.com", // Importante para Realtime DB
+  databaseURL: "https://lared-6db02-default-rtdb.firebaseio.com", // Reemplaza si tu URL es diferente
   projectId: "lared-6db02",
   storageBucket: "lared-6db02.firebasestorage.app",
   messagingSenderId: "146469241721",
-  appId: "1:146469241721:web:..."
+  appId: "1:145469241721:web:aa75af74720b4e7e3617a8"
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const rtdb = firebase.database();
-const auth = firebase.auth();
 
 // ==========================================
 // ESTADO GLOBAL
@@ -27,7 +26,7 @@ let currentTabIndex = 0;
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Desactivar Service Worker previo durante el desarrollo
+    // Desactivar Service Worker previo durante desarrollo
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(registrations => {
             for (let registration of registrations) {
@@ -36,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Gestión del Modo Oscuro
+    // Modo Oscuro
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light') {
         document.body.classList.remove('dark-mode');
@@ -45,23 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!savedTheme) localStorage.setItem('theme', 'dark');
     }
 
-    // Iniciar sesión anónima en Firebase Auth para obtener un UID persistente
-    auth.signInAnonymously().catch(err => console.error("Error al autenticar anónimamente:", err));
-
-    // Escuchar el cambio de estado de autenticación
-    auth.onAuthStateChanged(user => {
-        if (user && currentUser) {
-            setupPresence(user.uid);
-        }
-    });
-
-    // Verificar si hay sesión local activa
+    // Verificar sesión local activa
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
         currentUser = savedUser;
-        if (auth.currentUser) {
-            setupPresence(auth.currentUser.uid);
-        }
+        setupPresence();
         showApp();
     }
 
@@ -72,9 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (username) {
             currentUser = username;
             localStorage.setItem('currentUser', username);
-            if (auth.currentUser) {
-                setupPresence(auth.currentUser.uid);
-            }
+            setupPresence();
             showApp();
         }
     });
@@ -98,21 +83,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form-add-poll').addEventListener('submit', handleAddPoll);
     document.getElementById('phrase-form').addEventListener('submit', handleAddPhrase);
 
-    // Inicializar secciones y escuchar estado online
+    // Inicializar secciones y escuchadores en tiempo real
     initLocation();
     loadGames();
-    loadPhrases();
+    listenPhrases(); // Chat global en tiempo real
     loadPolls();
-    listenUsers();
+    listenUsers();   // Presencia online en tiempo real
 });
 
 // ==========================================
 // SISTEMA DE PRESENCIA REALTIME (onDisconnect)
 // ==========================================
-function setupPresence(uid) {
-    if (!uid || !currentUser) return;
+function setupPresence() {
+    if (!currentUser) return;
 
-    const userStatusRef = rtdb.ref('/status/' + uid);
+    // Limpiar caracteres no permitidos en claves de Realtime Database
+    const cleanUserKey = currentUser.replace(/[.#$\[\]]/g, "_");
+    const userStatusRef = rtdb.ref('/status/' + cleanUserKey);
 
     const isOfflineForRTDB = {
         state: 'offline',
@@ -126,13 +113,12 @@ function setupPresence(uid) {
         last_changed: firebase.database.ServerValue.TIMESTAMP
     };
 
-    // Escuchar cambios en la conexión física del socket
+    // Escuchar cambios de conexión del WebSocket
     rtdb.ref('.info/connected').on('value', snapshot => {
         if (snapshot.val() === false) return;
 
-        // Establecer instrucción en el servidor: si se desconecta, marcar offline
+        // Si se desconecta o cierra la pestaña, el servidor pone el estado en offline
         userStatusRef.onDisconnect().set(isOfflineForRTDB).then(() => {
-            // Estado actual en línea
             userStatusRef.set(isOnlineForRTDB);
         });
     });
@@ -146,8 +132,8 @@ function listenUsers() {
         grid.innerHTML = '';
         const statuses = snapshot.val() || {};
         
-        Object.keys(statuses).forEach(uid => {
-            const user = statuses[uid];
+        Object.keys(statuses).forEach(key => {
+            const user = statuses[key];
             const estaOnline = user.state === 'online';
             
             const div = document.createElement('div');
@@ -163,8 +149,80 @@ function listenUsers() {
             grid.appendChild(div);
         });
     }, error => {
-        console.error("Error leyendo Realtime Database:", error);
+        console.error("Error leyendo estados de usuario:", error);
     });
+}
+
+// ==========================================
+// FRASES (CHAT EN TIEMPO REAL CON FIRESTORE)
+// ==========================================
+function listenPhrases() {
+    // Escucha en tiempo real de mensajes ordenados por fecha
+    db.collection('phrases').orderBy('timestamp', 'asc').onSnapshot(snapshot => {
+        const container = document.getElementById('phrases-list');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        snapshot.forEach(doc => {
+            const phrase = doc.data();
+            const isMine = phrase.author === currentUser;
+            
+            const div = document.createElement('div');
+            // Si es propio -> 'mine' (derecha, color principal)
+            // Si es de otro -> burbuja gris a la izquierda
+            div.className = `chat-bubble ${isMine ? 'mine' : ''}`;
+            
+            if (!isMine) {
+                // Estilo gris para los receptores
+                div.style.backgroundColor = 'var(--surface-color, #2C2C2E)';
+                div.style.color = '#FFFFFF';
+                div.style.alignSelf = 'flex-start';
+                div.style.borderRadius = '18px 18px 18px 4px';
+            }
+
+            let timeHtml = '';
+            if (phrase.timestamp) {
+                const dateObj = phrase.timestamp.toDate ? phrase.timestamp.toDate() : new Date(phrase.timestamp);
+                const timeStr = obtenerTiempoRelativo(dateObj.getTime());
+                const timeColor = isMine ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.5)'; 
+                timeHtml = `<div style="color: ${timeColor}; font-size: 0.75em; margin-top: 4px; text-align: right;">${timeStr}</div>`;
+            }
+
+            div.innerHTML = `
+                <div class="chat-author" style="font-weight: 600; font-size: 0.8em; margin-bottom: 2px; color: ${isMine ? '#FFF' : 'var(--primary-color, #0A84FF)'};">
+                    ${phrase.author}
+                </div>
+                <div>${phrase.text}</div>
+                ${timeHtml}
+            `;
+            container.appendChild(div);
+        });
+
+        // Auto-scroll al fondo al recibir o enviar un mensaje
+        container.scrollTop = container.scrollHeight;
+    }, error => {
+        console.error("Error escuchando mensajes:", error);
+    });
+}
+
+async function handleAddPhrase(e) {
+    e.preventDefault();
+    const input = document.getElementById('phrase-input');
+    const text = input.value.trim();
+
+    if (text && currentUser) {
+        try {
+            await db.collection('phrases').add({ 
+                text: text, 
+                author: currentUser,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            input.value = '';
+        } catch (error) {
+            console.error("Error enviando mensaje:", error);
+        }
+    }
 }
 
 // ==========================================
@@ -353,70 +411,17 @@ function obtenerTiempoRelativo(timestamp) {
     if (diffSegundos < 60) {
         return "ahora";
     } else if (diffMinutos === 1) {
-        return "hace 1 minuto";
+        return "hace 1 min";
     } else if (diffMinutos < 60) {
-        return `hace ${diffMinutos} minutos`;
+        return `hace ${diffMinutos} min`;
     } else if (diffHoras === 1) {
-        return "hace 1 hora";
+        return "hace 1 h";
     } else if (diffHoras < 24 && !esAyer) {
-        return `hace ${diffHoras} horas`;
+        return `hace ${diffHoras} h`;
     } else if (esAyer) {
         return "ayer";
-    } else if (fechaMensaje.getFullYear() === ahora.getFullYear()) {
-        return `${fechaMensaje.getDate()} de ${meses[fechaMensaje.getMonth()]}`;
     } else {
-        return `${fechaMensaje.getDate()} de ${meses[fechaMensaje.getMonth()]} de ${fechaMensaje.getFullYear()}`;
-    }
-}
-
-// ==========================================
-// FRASES
-// ==========================================
-function loadPhrases() {
-    const phrases = JSON.parse(localStorage.getItem('appPhrases')) || [];
-    const container = document.getElementById('phrases-list');
-    container.innerHTML = '';
-
-    phrases.forEach(phrase => {
-        const isMine = phrase.author === currentUser;
-        const div = document.createElement('div');
-        div.className = `chat-bubble ${isMine ? 'mine' : ''}`;
-        
-        let timeHtml = '';
-        if (phrase.timestamp) {
-            const timeStr = obtenerTiempoRelativo(phrase.timestamp);
-            const colorGris = isMine ? 'rgba(255,255,255,0.7)' : 'gray'; 
-            timeHtml = `<div style="color: ${colorGris}; font-size: 0.85em; margin-top: 4px;">${timeStr}</div>`;
-        }
-
-        div.innerHTML = `
-            <div class="chat-author">${phrase.author}</div>
-            <div>${phrase.text}</div>
-            ${timeHtml}
-        `;
-        container.appendChild(div);
-    });
-    
-    container.scrollTop = container.scrollHeight;
-}
-
-function handleAddPhrase(e) {
-    e.preventDefault();
-    const input = document.getElementById('phrase-input');
-    const text = input.value.trim();
-
-    if (text) {
-        const phrases = JSON.parse(localStorage.getItem('appPhrases')) || [];
-        
-        phrases.push({ 
-            text: text, 
-            author: currentUser,
-            timestamp: new Date().getTime() 
-        });
-        
-        localStorage.setItem('appPhrases', JSON.stringify(phrases));
-        loadPhrases();
-        input.value = '';
+        return `${fechaMensaje.getDate()} de ${meses[fechaMensaje.getMonth()]}`;
     }
 }
 
